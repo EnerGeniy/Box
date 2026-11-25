@@ -1,0 +1,2042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Генератор коробок 3D — для 3D-печати</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Надёжные UMD-скрипты Three.js r128, OrbitControls, STLExporter и JSZip для работы даже через file:// -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- Шрифт Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        navy: {
+                            950: '#071120',
+                            900: '#0c192d',
+                            850: '#102038',
+                            800: '#152946',
+                            700: '#1e3960',
+                            600: '#2a4c7d'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background-color: #071120;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Кастомный скроллбар для панели настроек */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #0c192d; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #233e66; border-radius: 9999px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+
+        /* Стилизация ползунков (range) */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #1b3254;
+            border-radius: 9999px;
+            outline: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #22d3ee;
+            border: 2px solid #0c192d;
+            box-shadow: 0 0 8px rgba(34, 211, 238, 0.55);
+            cursor: pointer;
+            transition: transform 0.12s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+            background: #67e8f9;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #22d3ee;
+            border: 2px solid #0c192d;
+            box-shadow: 0 0 8px rgba(34, 211, 238, 0.55);
+            cursor: pointer;
+        }
+
+        /* Убираем стрелочки у input[type=number] */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] { -moz-appearance: textfield; }
+
+        /* Чертёжный градиент под 3D-канвасом */
+        #viewport-wrapper {
+            background: radial-gradient(circle at 50% 42%, #13315c 0%, #0b1f3d 55%, #071428 100%);
+        }
+
+        /* Анимация аккордеона */
+        .accordion-body {
+            transition: max-height 0.22s ease, opacity 0.2s ease;
+        }
+        .accordion-chevron {
+            transition: transform 0.2s ease;
+        }
+        .accordion-open .accordion-chevron {
+            transform: rotate(180deg);
+        }
+
+        /* Кнопки выбора */
+        .pill-btn {
+            background: #132540;
+            border: 1px solid #243f66;
+            color: #cbd5e1;
+            transition: all 0.15s ease;
+        }
+        .pill-btn:hover {
+            border-color: #38bdf8;
+            color: #ffffff;
+        }
+        .pill-btn.active {
+            background: linear-gradient(180deg, #06b6d4 0%, #0284c7 100%);
+            border-color: #38bdf8;
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+            font-weight: 600;
+        }
+
+        /* Кнопки - / + */
+        .step-btn {
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: #172d4d;
+            border: 1px solid #274673;
+            color: #93c5fd;
+            font-weight: 700;
+            font-size: 15px;
+            line-height: 1;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.12s ease;
+            flex-shrink: 0;
+        }
+        .step-btn:hover {
+            background: #1f3c66;
+            border-color: #22d3ee;
+            color: #ffffff;
+        }
+        .step-btn:active {
+            transform: scale(0.93);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen overflow-hidden select-none">
+
+    <!-- ==================== ВЕРХНЯЯ ПАНЕЛЬ ==================== -->
+    <header class="h-14 shrink-0 bg-navy-900 border-b border-navy-700/80 px-3 sm:px-5 flex items-center justify-between gap-2 z-30 shadow-lg">
+        <div class="flex items-center gap-2.5 min-w-0">
+            <!-- Мобильная кнопка открытия панели настроек -->
+            <button id="btn-toggle-sidebar" type="button" class="lg:hidden p-2 rounded-lg bg-navy-800 border border-navy-600 text-cyan-300 hover:bg-navy-700" title="Настройки">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-md shadow-cyan-500/20 shrink-0">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                    <polyline stroke-linecap="round" stroke-linejoin="round" points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line stroke-linecap="round" stroke-linejoin="round" x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+            </div>
+            <div class="truncate">
+                <h1 class="text-sm sm:text-base font-bold tracking-tight text-white truncate">Генератор коробок 3D</h1>
+                <p class="text-[11px] text-sky-300/70 hidden sm:block leading-none mt-0.5">Параметрический конструктор для 3D-печати · STL</p>
+            </div>
+        </div>
+
+        <!-- Переключатель режимов просмотра -->
+        <div class="flex items-center bg-navy-950/90 p-1 rounded-xl border border-navy-700 gap-1">
+            <button type="button" data-view="side" class="view-mode-btn pill-btn active px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm">Рядом</button>
+            <button type="button" data-view="closed" class="view-mode-btn pill-btn px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm">Закрыта</button>
+            <button type="button" data-view="section" class="view-mode-btn pill-btn px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm">Разрез</button>
+        </div>
+
+        <!-- Кнопка сброса камеры -->
+        <button id="btn-reset-cam" type="button" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-700 border border-navy-600 text-xs text-sky-200 transition" title="Сбросить ракурс камеры">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span>Камера</span>
+        </button>
+    </header>
+
+    <!-- ==================== ОСНОВНАЯ ОБЛАСТЬ ==================== -->
+    <div class="flex flex-1 min-h-0 relative overflow-hidden">
+
+        <!-- Подложка для мобильного меню -->
+        <div id="sidebar-backdrop" class="fixed inset-0 bg-black/60 z-20 hidden lg:hidden"></div>
+
+        <!-- ==================== ЛЕВАЯ ПАНЕЛЬ НАСТРОЕК ==================== -->
+        <aside id="sidebar" class="fixed lg:static inset-y-14 left-0 z-30 w-[335px] sm:w-[360px] max-w-[90vw] bg-navy-900 border-r border-navy-700/80 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out h-[calc(100vh-3.5rem)] lg:h-full shrink-0">
+
+            <!-- Прокручиваемые карточки-аккордеоны -->
+            <div class="flex-1 overflow-y-auto custom-scroll p-3 space-y-2.5">
+
+                <!-- 1. ЛОТОК-ОРГАНАЙЗЕР -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card accordion-open">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Лоток-органайзер</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3 pt-1">
+                        <label class="flex items-center justify-between gap-3 cursor-pointer p-2 rounded-lg bg-navy-900/70 border border-navy-700/60 hover:border-cyan-500/50 transition">
+                            <div>
+                                <div class="text-sm font-medium text-white">Сделать лотком</div>
+                                <div class="text-[11px] text-sky-300/70">Убирает крышку и добавляет фаску по краю</div>
+                            </div>
+                            <input type="checkbox" id="chk-tray" class="w-5 h-5 accent-cyan-400 rounded cursor-pointer">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 2. ФОРМА -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card accordion-open">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Форма</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 space-y-3">
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button type="button" data-shape="rect" class="shape-btn pill-btn active py-2 rounded-lg text-xs">Прямоуг</button>
+                            <button type="button" data-shape="circle" class="shape-btn pill-btn py-2 rounded-lg text-xs">Круг</button>
+                            <button type="button" data-shape="oval" class="shape-btn pill-btn py-2 rounded-lg text-xs">Овал</button>
+                            <button type="button" data-shape="hex" class="shape-btn pill-btn py-2 rounded-lg text-xs">Грани</button>
+                        </div>
+
+                        <!-- Скругление углов -->
+                        <div id="corner-radius-block" class="space-y-1.5">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-sky-200">Скругление углов, мм</span>
+                                <span id="val-cornerRadius" class="font-semibold text-cyan-300">3</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="step-btn" data-step-target="cornerRadius" data-step="-1">−</button>
+                                <input type="range" id="rng-cornerRadius" min="0" max="40" step="0.5" value="3">
+                                <button type="button" class="step-btn" data-step-target="cornerRadius" data-step="1">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. РАЗМЕР ВНУТРИ -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card accordion-open">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Размер внутри</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 space-y-3">
+                        <!-- Ширина / Глубина / Высота -->
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs text-sky-200">Ширина (X), мм</span>
+                                <div class="flex items-center gap-1.5">
+                                    <button type="button" class="step-btn" data-step-target="width" data-step="-2">−</button>
+                                    <input type="number" id="num-width" min="20" max="400" step="1" value="218" class="w-16 text-center text-sm font-semibold bg-navy-950 border border-navy-600 rounded-lg py-1 text-white focus:outline-none focus:border-cyan-400">
+                                    <button type="button" class="step-btn" data-step-target="width" data-step="2">+</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs text-sky-200">Глубина (Y), мм</span>
+                                <div class="flex items-center gap-1.5">
+                                    <button type="button" class="step-btn" data-step-target="depth" data-step="-2">−</button>
+                                    <input type="number" id="num-depth" min="20" max="400" step="1" value="200" class="w-16 text-center text-sm font-semibold bg-navy-950 border border-navy-600 rounded-lg py-1 text-white focus:outline-none focus:border-cyan-400">
+                                    <button type="button" class="step-btn" data-step-target="depth" data-step="2">+</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs text-sky-200">Высота (Z), мм</span>
+                                <div class="flex items-center gap-1.5">
+                                    <button type="button" class="step-btn" data-step-target="height" data-step="-2">−</button>
+                                    <input type="number" id="num-height" min="10" max="300" step="1" value="50" class="w-16 text-center text-sm font-semibold bg-navy-950 border border-navy-600 rounded-lg py-1 text-white focus:outline-none focus:border-cyan-400">
+                                    <button type="button" class="step-btn" data-step-target="height" data-step="2">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Стенка -->
+                        <div class="space-y-1.5 pt-1 border-t border-navy-700/60">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-sky-200">Стенка, мм</span>
+                                <span id="val-wall" class="font-semibold text-cyan-300">2.4</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="step-btn" data-step-target="wall" data-step="-0.2">−</button>
+                                <input type="range" id="rng-wall" min="0.8" max="6" step="0.2" value="2.4">
+                                <button type="button" class="step-btn" data-step-target="wall" data-step="0.2">+</button>
+                            </div>
+                        </div>
+
+                        <!-- Дно и верх крышки -->
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-sky-200">Дно и верх крышки, мм</span>
+                                <span id="val-bottom" class="font-semibold text-cyan-300">2</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="step-btn" data-step-target="bottom" data-step="-0.2">−</button>
+                                <input type="range" id="rng-bottom" min="0.8" max="6" step="0.2" value="2">
+                                <button type="button" class="step-btn" data-step-target="bottom" data-step="0.2">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. КРЫШКА -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card accordion-open">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Крышка</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 space-y-3">
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button type="button" data-lid="flush" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">Вровень</button>
+                            <button type="button" data-lid="overlap" class="lid-btn pill-btn active py-1.5 px-2 rounded-lg text-xs">Внахлёст</button>
+                            <button type="button" data-lid="none" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">Без крышки</button>
+                            <button type="button" data-lid="screws" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">На винтах</button>
+                            <button type="button" data-lid="snap" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">На защёлках</button>
+                            <button type="button" data-lid="magnets" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">Магниты</button>
+                            <button type="button" data-lid="hinge" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">На петле</button>
+                            <button type="button" data-lid="sliding" class="lid-btn pill-btn py-1.5 px-2 rounded-lg text-xs">Сдвижная</button>
+                        </div>
+
+                        <div id="lid-options-container" class="space-y-3 pt-1 border-t border-navy-700/60">
+                            <!-- Глубина крышки -->
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="text-sky-200">Глубина крышки, мм</span>
+                                    <span id="val-lidDepth" class="font-semibold text-cyan-300">12</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" class="step-btn" data-step-target="lidDepth" data-step="-1">−</button>
+                                    <input type="range" id="rng-lidDepth" min="4" max="50" step="1" value="12">
+                                    <button type="button" class="step-btn" data-step-target="lidDepth" data-step="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- Зазор -->
+                            <div class="space-y-1.5">
+                                <div class="text-xs text-sky-200">На сколько крышка больше коробки, мм</div>
+                                <div class="flex items-center gap-1.5">
+                                    <button type="button" data-clearance="0.5" class="clearance-preset pill-btn active px-2.5 py-1 rounded-md text-xs">0.5</button>
+                                    <button type="button" data-clearance="1" class="clearance-preset pill-btn px-2.5 py-1 rounded-md text-xs">1</button>
+                                    <button type="button" data-clearance="1.5" class="clearance-preset pill-btn px-2.5 py-1 rounded-md text-xs">1.5</button>
+                                    <div class="flex items-center gap-1 ml-auto">
+                                        <button type="button" class="step-btn" data-step-target="clearance" data-step="-0.1">−</button>
+                                        <input type="number" id="num-clearance" min="0.1" max="3" step="0.1" value="0.5" class="w-12 text-center text-xs font-semibold bg-navy-950 border border-navy-600 rounded-md py-1 text-white focus:outline-none focus:border-cyan-400">
+                                        <button type="button" class="step-btn" data-step-target="clearance" data-step="0.1">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. ЯЧЕЙКИ ВНУТРИ -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card accordion-open">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Ячейки внутри</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 space-y-3">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-navy-900/70 p-2 rounded-lg border border-navy-700/60">
+                                <div class="text-[11px] text-sky-300/80 mb-1.5 text-center">По ширине</div>
+                                <div class="flex items-center justify-between">
+                                    <button type="button" class="step-btn" data-step-target="cellsX" data-step="-1">−</button>
+                                    <span id="val-cellsX" class="text-sm font-bold text-white">3</span>
+                                    <button type="button" class="step-btn" data-step-target="cellsX" data-step="1">+</button>
+                                </div>
+                            </div>
+                            <div class="bg-navy-900/70 p-2 rounded-lg border border-navy-700/60">
+                                <div class="text-[11px] text-sky-300/80 mb-1.5 text-center">По глубине</div>
+                                <div class="flex items-center justify-between">
+                                    <button type="button" class="step-btn" data-step-target="cellsY" data-step="-1">−</button>
+                                    <span id="val-cellsY" class="text-sm font-bold text-white">1</span>
+                                    <button type="button" class="step-btn" data-step-target="cellsY" data-step="1">+</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-sky-200">Толщина перегородок, мм</span>
+                                <span id="val-dividerWall" class="font-semibold text-cyan-300">1.2</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="step-btn" data-step-target="dividerWall" data-step="-0.2">−</button>
+                                <input type="range" id="rng-dividerWall" min="0.8" max="4" step="0.2" value="1.2">
+                                <button type="button" class="step-btn" data-step-target="dividerWall" data-step="0.2">+</button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between text-xs">
+                                <span class="text-sky-200">Высота перегородок, мм</span>
+                                <span id="val-dividerHeight" class="font-semibold text-cyan-300">50 (до края)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" class="step-btn" data-step-target="dividerHeight" data-step="-2">−</button>
+                                <input type="range" id="rng-dividerHeight" min="5" max="50" step="1" value="50">
+                                <button type="button" class="step-btn" data-step-target="dividerHeight" data-step="2">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 6. НАДПИСЬ НА КРЫШКЕ -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Надпись на крышке</span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 hidden space-y-2">
+                        <input type="text" id="txt-lidText" maxlength="20" placeholder="Например: МЕТИЗЫ или 3D" class="w-full px-3 py-2 rounded-lg bg-navy-950 border border-navy-600 text-sm text-white placeholder-sky-400/40 focus:outline-none focus:border-cyan-400">
+                        <p class="text-[11px] text-sky-300/65">Рельефная надпись (+1.0 мм) на верхней стороне крышки. Поддерживается кириллица, латиница и цифры.</p>
+                    </div>
+                </div>
+
+                <!-- 7. ВЫРЕЗЫ -->
+                <div class="bg-navy-850 rounded-xl border border-navy-700/80 overflow-hidden accordion-card">
+                    <button type="button" class="accordion-header w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-navy-800/70 transition">
+                        <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">Вырезы <span id="cutout-count-badge" class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-navy-700 text-cyan-200 hidden">0</span></span>
+                        <svg class="accordion-chevron w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div class="accordion-body px-3.5 pb-3.5 pt-1 hidden space-y-2.5">
+                        <div id="cutouts-list" class="space-y-2"></div>
+                        <button type="button" id="btn-add-cutout" class="w-full py-2 rounded-lg border border-dashed border-cyan-500/60 bg-navy-900/60 hover:bg-cyan-500/15 text-xs font-semibold text-cyan-300 transition">
+                            + Добавить вырез
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- БЛОК ПРЕДУПРЕЖДЕНИЯ И ЭКСПОРТА (закреплён внизу левой панели) -->
+            <div class="p-3 border-t border-navy-700/80 bg-navy-950/80 space-y-2.5 shrink-0">
+                <!-- Жёлтое предупреждение > 220 мм -->
+                <div id="size-warning" class="hidden p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/50 flex items-start gap-2">
+                    <svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <div class="text-[11px] leading-snug text-amber-200">
+                        <span class="font-semibold text-amber-300">Габарит превышает 220 мм</span> (<span id="warning-dims"></span>) — проверьте размер стола вашего 3D-принтера.
+                    </div>
+                </div>
+
+                <!-- Кнопка скачивания ZIP -->
+                <button type="button" id="btn-export-zip" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 active:scale-[0.99] text-navy-950 font-bold text-sm shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span id="export-btn-text">Скачать STL — коробка и крышка (ZIP)</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ==================== ПРАВАЯ ЧАСТЬ: 3D-СЦЕНА + ИНФО-СТРОКА ==================== -->
+        <main class="flex-1 flex flex-col min-w-0 h-full relative">
+
+            <!-- Контейнер 3D-сцены -->
+            <div id="viewport-wrapper" class="flex-1 relative w-full min-h-0 overflow-hidden">
+                <div id="canvas-container" class="w-full h-full"></div>
+
+                <!-- Плавающий ползунок положения разреза (виден только в режиме "Разрез") -->
+                <div id="section-control" class="hidden absolute top-3 right-3 bg-navy-900/90 backdrop-blur border border-cyan-500/40 rounded-xl px-3.5 py-2.5 w-56 shadow-xl z-10">
+                    <div class="flex items-center justify-between text-xs mb-1.5">
+                        <span class="text-cyan-300 font-semibold">Плоскость разреза</span>
+                        <span id="val-sectionOffset" class="text-white font-mono">0 мм</span>
+                    </div>
+                    <input type="range" id="rng-sectionOffset" min="-150" max="150" step="1" value="0">
+                </div>
+
+                <!-- Подсказка управления -->
+                <div class="absolute bottom-3 left-3 pointer-events-none hidden sm:flex items-center gap-2 bg-navy-950/60 backdrop-blur-sm border border-sky-400/20 rounded-lg px-2.5 py-1 text-[11px] text-sky-200/75">
+                    <span>ЛКМ — вращение</span>
+                    <span class="opacity-40">·</span>
+                    <span>ПКМ — сдвиг</span>
+                    <span class="opacity-40">·</span>
+                    <span>Колесо — масштаб</span>
+                </div>
+
+                <!-- Всплывающее уведомление (тост) -->
+                <div id="toast" class="hidden absolute top-3 left-1/2 -translate-x-1/2 bg-navy-900/95 border border-cyan-400/60 text-cyan-100 text-xs font-medium px-4 py-2 rounded-xl shadow-2xl z-20"></div>
+            </div>
+
+            <!-- Нижняя информационная строка -->
+            <footer class="shrink-0 bg-navy-950 border-t border-navy-700/80 px-4 py-2.5 flex items-center justify-center text-center">
+                <div id="info-bar" class="text-xs sm:text-sm text-sky-100/90 font-medium tracking-tight">
+                    Загрузка 3D-сцены...
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        // =========================================================================
+        // 1. СОСТОЯНИЕ ПАРАМЕТРОВ МОДЕЛИ
+        // =========================================================================
+        const state = {
+            viewMode: 'side',        // 'side' | 'closed' | 'section'
+            sectionOffset: 0,        // смещение плоскости разреза (мм)
+            isTray: false,           // лоток-органайзер
+            shape: 'rect',           // 'rect' | 'circle' | 'oval' | 'hex'
+            cornerRadius: 3,         // скругление углов (мм)
+            width: 218,              // внутренняя ширина X (мм)
+            depth: 200,              // внутренняя глубина Z (мм)
+            height: 50,              // внутренняя высота Y (мм)
+            wall: 2.4,               // толщина стенок (мм)
+            bottom: 2.0,             // толщина дна и верха крышки (мм)
+            lidType: 'overlap',      // 'flush' | 'overlap' | 'none' | 'screws' | 'snap' | 'magnets' | 'hinge' | 'sliding'
+            prevLidType: 'overlap',  // запоминаем тип крышки при включении лотка
+            lidDepth: 12,            // глубина юбки/вставки крышки (мм)
+            clearance: 0.5,          // зазор (мм)
+            cellsX: 3,               // ячеек по ширине
+            cellsY: 1,               // ячеек по глубине
+            dividerWall: 1.2,        // толщина перегородок (мм)
+            dividerHeight: 50,       // высота перегородок (мм)
+            dividerFullHeight: true, // привязана ли высота перегородок к краю
+            lidText: '',             // рельефная надпись на крышке
+            cutouts: []              // [{ id, wall: 'front'|'back'|'left'|'right', shape: 'rect'|'circle', w, h, offsetX, offsetY }]
+        };
+
+        let cutoutIdCounter = 1;
+
+        // =========================================================================
+        // 2. ВСТРОЕННЫЙ ВЕКТОРНЫЙ ШРИФТ (КИРИЛЛИЦА + ЛАТИНИЦА + ЦИФРЫ) ДЛЯ 3D-РЕЛЬЕФА
+        //    Координаты на сетке X: [0..4], Y: [0..6] (снизу вверх)
+        // =========================================================================
+        const GLYPHS = {
+            '0': [[[0,0],[4,0],[4,6],[0,6],[0,0]], [[0,0],[4,6]]],
+            '1': [[[1,4.5],[2.5,6],[2.5,0]], [[1,0],[4,0]]],
+            '2': [[[0,4.5],[1,6],[3,6],[4,4.5],[4,3.5],[0,0],[4,0]]],
+            '3': [[[0,5],[1,6],[3,6],[4,4.5],[2.5,3],[4,1.5],[3,0],[1,0],[0,1]]],
+            '4': [[[3.5,0],[3.5,6],[0,2],[4,2]]],
+            '5': [[[4,6],[0,6],[0,3.5],[3,3.5],[4,2.5],[4,1],[3,0],[0,0]]],
+            '6': [[[3.5,6],[1,6],[0,4.5],[0,1],[1,0],[3,0],[4,1],[4,2.5],[3,3.5],[0,3.5]]],
+            '7': [[[0,6],[4,6],[1.2,0]]],
+            '8': [[[1,3],[0,4.5],[1,6],[3,6],[4,4.5],[3,3],[1,3],[0,1.5],[1,0],[3,0],[4,1.5],[3,3]]],
+            '9': [[[0.5,0],[3,0],[4,1.5],[4,5],[3,6],[1,6],[0,5],[0,3.5],[1,2.5],[4,2.5]]],
+            'A': [[[0,0],[2,6],[4,0]], [[0.8,2],[3.2,2]]],
+            'B': [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]], [[3,3],[4,2],[4,1],[3,0],[0,0]]],
+            'C': [[[4,5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0],[3,0],[4,1]]],
+            'D': [[[0,0],[0,6],[2.5,6],[4,4.5],[4,1.5],[2.5,0],[0,0]]],
+            'E': [[[4,6],[0,6],[0,0],[4,0]], [[0,3],[3,3]]],
+            'F': [[[4,6],[0,6],[0,0]], [[0,3],[3,3]]],
+            'G': [[[4,5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0],[3.5,0],[4,1],[4,3],[2.2,3]]],
+            'H': [[[0,0],[0,6]], [[4,0],[4,6]], [[0,3],[4,3]]],
+            'I': [[[1,6],[3,6]], [[2,6],[2,0]], [[1,0],[3,0]]],
+            'J': [[[4,6],[4,1.5],[3,0],[1,0],[0,1.5]]],
+            'K': [[[0,0],[0,6]], [[4,6],[0,3],[4,0]]],
+            'L': [[[0,6],[0,0],[4,0]]],
+            'M': [[[0,0],[0,6],[2,2.5],[4,6],[4,0]]],
+            'N': [[[0,0],[0,6],[4,0],[4,6]]],
+            'O': [[[1,0],[3,0],[4,1.5],[4,4.5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0]]],
+            'P': [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]]],
+            'Q': [[[1,0],[3,0],[4,1.5],[4,4.5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0]], [[2.5,1.5],[4.2,-0.2]]],
+            'R': [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]], [[2.2,3],[4,0]]],
+            'S': [[[4,5],[3,6],[1,6],[0,5],[0,4],[1,3.2],[3,2.8],[4,2],[4,1],[3,0],[1,0],[0,1]]],
+            'T': [[[0,6],[4,6]], [[2,6],[2,0]]],
+            'U': [[[0,6],[0,1.5],[1,0],[3,0],[4,1.5],[4,6]]],
+            'V': [[[0,6],[2,0],[4,6]]],
+            'W': [[[0,6],[1,0],[2,3.5],[3,0],[4,6]]],
+            'X': [[[0,6],[4,0]], [[4,6],[0,0]]],
+            'Y': [[[0,6],[2,3],[4,6]], [[2,3],[2,0]]],
+            'Z': [[[0,6],[4,6],[0,0],[4,0]]],
+            // Кириллица
+            'А': [[[0,0],[2,6],[4,0]], [[0.8,2],[3.2,2]]],
+            'Б': [[[4,6],[0,6],[0,0],[3,0],[4,1],[4,2.5],[3,3.5],[0,3.5]]],
+            'В': [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]], [[3,3],[4,2],[4,1],[3,0],[0,0]]],
+            'Г': [[[0,0],[0,6],[4,6]]],
+            'Д': [[[0,0],[0,1],[4,1],[4,0]], [[0.6,1],[1.2,6],[3.4,6],[3.4,1]]],
+            'Е': [[[4,6],[0,6],[0,0],[4,0]], [[0,3],[3,3]]],
+            'Ё': [[[4,5.5],[0,5.5],[0,0],[4,0]], [[0,2.8],[3,2.8]], [[1,6.5],[1.3,6.5]], [[2.7,6.5],[3,6.5]]],
+            'Ж': [[[0,6],[4,0]], [[4,6],[0,0]], [[2,6],[2,0]]],
+            'З': [[[0,5],[1,6],[3,6],[4,4.5],[2.2,3],[4,1.5],[3,0],[1,0],[0,1]]],
+            'И': [[[0,6],[0,0],[4,6],[4,0]]],
+            'Й': [[[0,5.5],[0,0],[4,5.5],[4,0]], [[1.2,6.5],[2.8,6.5]]],
+            'К': [[[0,0],[0,6]], [[4,6],[0,3],[4,0]]],
+            'Л': [[[0,0],[1,6],[4,6],[4,0]]],
+            'М': [[[0,0],[0,6],[2,2.5],[4,6],[4,0]]],
+            'Н': [[[0,0],[0,6]], [[4,0],[4,6]], [[0,3],[4,3]]],
+            'О': [[[1,0],[3,0],[4,1.5],[4,4.5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0]]],
+            'П': [[[0,0],[0,6],[4,6],[4,0]]],
+            'Р': [[[0,0],[0,6],[3,6],[4,5],[4,4],[3,3],[0,3]]],
+            'С': [[[4,5],[3,6],[1,6],[0,4.5],[0,1.5],[1,0],[3,0],[4,1]]],
+            'Т': [[[0,6],[4,6]], [[2,6],[2,0]]],
+            'У': [[[0,6],[2,2.5],[4,6]], [[2,2.5],[0.8,0]]],
+            'Ф': [[[2,6],[2,0]], [[1,1.5],[3,1.5],[4,2.5],[4,4],[3,5],[1,5],[0,4],[0,2.5],[1,1.5]]],
+            'Х': [[[0,6],[4,0]], [[4,6],[0,0]]],
+            'Ц': [[[0,6],[0,0.8],[3.6,0.8],[3.6,6]], [[3.6,0.8],[4.2,0.8],[4.2,0]]],
+            'Ч': [[[0,6],[0,3.5],[1,2.8],[4,2.8]], [[4,6],[4,0]]],
+            'Ш': [[[0,6],[0,0],[4,0],[4,6]], [[2,6],[2,0]]],
+            'Щ': [[[0,6],[0,0.8],[3.8,0.8],[3.8,6]], [[1.9,6],[1.9,0.8]], [[3.8,0.8],[4.3,0.8],[4.3,0]]],
+            'Ъ': [[[0,6],[1.2,6],[1.2,0],[3.5,0],[4,1],[4,2.5],[3.5,3.2],[1.2,3.2]]],
+            'Ы': [[[0,6],[0,0],[2.2,0],[2.8,1],[2.8,2.5],[2.2,3.2],[0,3.2]], [[4,6],[4,0]]],
+            'Ь': [[[0,6],[0,0],[3,0],[4,1],[4,2.5],[3,3.2],[0,3.2]]],
+            'Э': [[[0,5],[1,6],[3,6],[4,4.5],[4,1.5],[3,0],[1,0],[0,1]], [[1.2,3],[4,3]]],
+            'Ю': [[[0,6],[0,0]], [[0,3],[1.4,3]], [[2,0.5],[3.4,0.5],[4,1.8],[4,4.2],[3.4,5.5],[2,5.5],[1.4,4.2],[1.4,1.8],[2,0.5]]],
+            'Я': [[[4,0],[4,6],[1,6],[0,5],[0,4],[1,3],[4,3]], [[1.8,3],[0,0]]],
+            '-': [[[0.5,3],[3.5,3]]],
+            '+': [[[0.5,3],[3.5,3]], [[2,1.5],[2,4.5]]],
+            '.': [[[1.8,0],[2.2,0],[2.2,0.5],[1.8,0.5],[1.8,0]]],
+            '!': [[[2,6],[2,1.8]], [[2,0.4],[2,0]]],
+            '/': [[[0.5,0],[3.5,6]]],
+            ':': [[[2,4.5],[2,4.2]], [[2,1.5],[2,1.2]]]
+        };
+
+        // =========================================================================
+        // 3. ИНИЦИАЛИЗАЦИЯ THREE.JS СЦЕНЫ
+        // =========================================================================
+        const canvasContainer = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(40, 1, 1, 4000);
+        camera.position.set(280, 240, 340);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.localClippingEnabled = true;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        canvasContainer.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.maxPolarAngle = Math.PI * 0.495;
+        controls.minDistance = 60;
+        controls.maxDistance = 1600;
+        controls.target.set(0, 25, 0);
+
+        // Плоскость сечения для режима "Разрез"
+        const clippingPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+
+        // Освещение (мягкое студийное)
+        const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e3a5f, 0.72);
+        hemiLight.position.set(0, 300, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfffaf0, 0.85);
+        dirLight.position.set(220, 360, 260);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 50;
+        dirLight.shadow.camera.far = 1200;
+        const dCam = 380;
+        dirLight.shadow.camera.left = -dCam;
+        dirLight.shadow.camera.right = dCam;
+        dirLight.shadow.camera.top = dCam;
+        dirLight.shadow.camera.bottom = -dCam;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0x93c5fd, 0.38);
+        fillLight.position.set(-240, 160, -200);
+        scene.add(fillLight);
+
+        // Чертёжная синяя сетка под моделями (мелкая + крупная)
+        function createBlueprintGrid() {
+            const gridGroup = new THREE.Group();
+
+            // Приёмник теней (прозрачная плоскость)
+            const shadowGeo = new THREE.PlaneGeometry(1600, 1600);
+            const shadowMat = new THREE.ShadowMaterial({ opacity: 0.28, color: 0x030b17 });
+            const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+            shadowPlane.rotation.x = -Math.PI / 2;
+            shadowPlane.position.y = -0.25;
+            shadowPlane.receiveShadow = true;
+            gridGroup.add(shadowPlane);
+
+            // Мелкая сетка (шаг 10 мм)
+            const minorGrid = new THREE.GridHelper(1000, 100, 0x1e4c82, 0x163a66);
+            minorGrid.position.y = -0.15;
+            minorGrid.material.opacity = 0.45;
+            minorGrid.material.transparent = true;
+            gridGroup.add(minorGrid);
+
+            // Крупная сетка (шаг 50 мм)
+            const majorGrid = new THREE.GridHelper(1000, 20, 0x38bdf8, 0x2563a8);
+            majorGrid.position.y = -0.08;
+            majorGrid.material.opacity = 0.65;
+            majorGrid.material.transparent = true;
+            gridGroup.add(majorGrid);
+
+            return gridGroup;
+        }
+        scene.add(createBlueprintGrid());
+
+        // Материалы коробки (кремово-бежевый) и крышки (светло-белый)
+        const boxMaterial = new THREE.MeshStandardMaterial({
+            color: 0xe7dac5,
+            roughness: 0.48,
+            metalness: 0.04,
+            side: THREE.DoubleSide
+        });
+        const lidMaterial = new THREE.MeshStandardMaterial({
+            color: 0xf4f7fb,
+            roughness: 0.42,
+            metalness: 0.04,
+            side: THREE.DoubleSide
+        });
+        const accentMaterial = new THREE.MeshStandardMaterial({
+            color: 0xdccbb0,
+            roughness: 0.5,
+            metalness: 0.06,
+            side: THREE.DoubleSide
+        });
+
+        // Группы для текущей модели
+        let boxGroup = new THREE.Group();
+        let lidGroup = new THREE.Group();
+        scene.add(boxGroup);
+        scene.add(lidGroup);
+
+        // =========================================================================
+        // 4. ГЕОМЕТРИЧЕСКИЕ ПРИМИТИВЫ И ПРОФИЛИ
+        // =========================================================================
+
+        /**
+         * Создаёт 2D-контур (THREE.Shape или THREE.Path) нужной формы
+         */
+        function createProfile(w, d, shapeType, radius, isPath) {
+            const target = isPath ? new THREE.Path() : new THREE.Shape();
+            const hw = w / 2;
+            const hd = d / 2;
+
+            if (shapeType === 'circle') {
+                const r = Math.min(hw, hd);
+                target.absarc(0, 0, Math.max(0.5, r), 0, Math.PI * 2, false);
+                return target;
+            }
+
+            if (shapeType === 'oval') {
+                target.absellipse(0, 0, Math.max(0.5, hw), Math.max(0.5, hd), 0, Math.PI * 2, false, 0);
+                return target;
+            }
+
+            if (shapeType === 'hex') {
+                const pts = [];
+                for (let i = 0; i < 6; i++) {
+                    const ang = (Math.PI / 3) * i;
+                    pts.push(new THREE.Vector2(Math.cos(ang) * hw, Math.sin(ang) * hd));
+                }
+                const maxR = Math.min(hw, hd) * 0.32;
+                const r = Math.max(0, Math.min(radius, maxR));
+                if (r < 0.2) {
+                    target.moveTo(pts[0].x, pts[0].y);
+                    for (let i = 1; i < 6; i++) target.lineTo(pts[i].x, pts[i].y);
+                    target.closePath();
+                } else {
+                    for (let i = 0; i < 6; i++) {
+                        const prev = pts[(i + 5) % 6];
+                        const curr = pts[i];
+                        const next = pts[(i + 1) % 6];
+                        const v1 = prev.clone().sub(curr).normalize().multiplyScalar(r);
+                        const v2 = next.clone().sub(curr).normalize().multiplyScalar(r);
+                        const p1 = curr.clone().add(v1);
+                        const p2 = curr.clone().add(v2);
+                        if (i === 0) target.moveTo(p1.x, p1.y);
+                        else target.lineTo(p1.x, p1.y);
+                        target.quadraticCurveTo(curr.x, curr.y, p2.x, p2.y);
+                    }
+                    target.closePath();
+                }
+                return target;
+            }
+
+            // Прямоугольник (со скруглением)
+            const r = Math.max(0, Math.min(radius, hw - 0.1, hd - 0.1));
+            if (r < 0.1) {
+                target.moveTo(-hw, -hd);
+                target.lineTo(hw, -hd);
+                target.lineTo(hw, hd);
+                target.lineTo(-hw, hd);
+                target.closePath();
+            } else {
+                target.moveTo(-hw + r, -hd);
+                target.lineTo(hw - r, -hd);
+                target.absarc(hw - r, -hd + r, r, -Math.PI / 2, 0, false);
+                target.lineTo(hw, hd - r);
+                target.absarc(hw - r, hd - r, r, 0, Math.PI / 2, false);
+                target.lineTo(-hw + r, hd);
+                target.absarc(-hw + r, hd - r, r, Math.PI / 2, Math.PI, false);
+                target.lineTo(-hw, -hd + r);
+                target.absarc(-hw + r, -hd + r, r, Math.PI, Math.PI * 1.5, false);
+                target.closePath();
+            }
+            return target;
+        }
+
+        /**
+         * Выдавливает 2D-профиль по оси Y (вверх от yStart на высоту depth)
+         */
+        function extrudeUp(shape, height, yStart, material, bevelOpts) {
+            const opts = {
+                depth: Math.max(0.1, height),
+                bevelEnabled: Boolean(bevelOpts),
+                curveSegments: 32
+            };
+            if (bevelOpts) {
+                opts.bevelThickness = bevelOpts.thickness || 0.6;
+                opts.bevelSize = bevelOpts.size || 0.6;
+                opts.bevelSegments = bevelOpts.segments || 2;
+            }
+            const geo = new THREE.ExtrudeGeometry(shape, opts);
+            geo.rotateX(-Math.PI / 2);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.y = yStart;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        /**
+         * Создаёт полую стенку (внешний контур минус внутренний)
+         */
+        function createHollowRing(outW, outD, inW, inD, shapeType, outR, inR, height, yStart, material, bevelOpts) {
+            const outer = createProfile(outW, outD, shapeType, outR, false);
+            const inner = createProfile(inW, inD, shapeType, inR, true);
+            outer.holes.push(inner);
+            return extrudeUp(outer, height, yStart, material, bevelOpts);
+        }
+
+        /**
+         * Прямоугольный параллелепипед, выровненный по низу yStart
+         */
+        function createBoxMesh(w, h, d, x, yStart, z, material) {
+            const geo = new THREE.BoxGeometry(Math.max(0.1, w), Math.max(0.1, h), Math.max(0.1, d));
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(x, yStart + h / 2, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        /**
+         * Строит стенки прямоугольной коробки с настоящими геометрическими вырезами (Shape.holes)
+         */
+        function buildRectWallsWithCutouts(outW, outD, inW, inD, wall, H, bottom, outR, cutouts, material) {
+            const grp = new THREE.Group();
+            const r = Math.max(0, Math.min(outR, outW / 2 - wall - 0.5, outD / 2 - wall - 0.5));
+            const inR = Math.max(0, r - wall);
+
+            // Вспомогательная функция: строит одну прямую стенку с отверстиями
+            function addWallPanel(wallKey, panelLen, axis, posCoord, normalSign) {
+                const shape = new THREE.Shape();
+                shape.moveTo(-panelLen / 2, 0);
+                shape.lineTo(panelLen / 2, 0);
+                shape.lineTo(panelLen / 2, H);
+                shape.lineTo(-panelLen / 2, H);
+                shape.closePath();
+
+                const wallCutouts = cutouts.filter(c => c.wall === wallKey);
+                wallCutouts.forEach(c => {
+                    const cx = Math.max(-panelLen / 2 + 2, Math.min(panelLen / 2 - 2, c.offsetX));
+                    const cy = Math.max(1, Math.min(H - 1, c.offsetY));
+                    const hole = new THREE.Path();
+                    if (c.shape === 'circle') {
+                        const rad = Math.max(1, Math.min(c.w / 2, panelLen / 2 - Math.abs(cx) - 0.5, cy - 0.3, H - cy - 0.3));
+                        if (rad > 0.5) {
+                            hole.absarc(cx, cy, rad, 0, Math.PI * 2, true);
+                            shape.holes.push(hole);
+                        }
+                    } else {
+                        const hw = Math.max(1, Math.min(c.w / 2, panelLen / 2 - Math.abs(cx) - 0.5));
+                        const hh = Math.max(1, Math.min(c.h / 2, cy - 0.3, H - cy - 0.3));
+                        if (hw > 0.5 && hh > 0.5) {
+                            hole.moveTo(cx - hw, cy - hh);
+                            hole.lineTo(cx - hw, cy + hh);
+                            hole.lineTo(cx + hw, cy + hh);
+                            hole.lineTo(cx + hw, cy - hh);
+                            hole.closePath();
+                            shape.holes.push(hole);
+                        }
+                    }
+                });
+
+                const geo = new THREE.ExtrudeGeometry(shape, { depth: wall, bevelEnabled: false, curveSegments: 24 });
+                const mesh = new THREE.Mesh(geo, material);
+                if (axis === 'Z') {
+                    // Передняя или задняя стенка (вдоль X)
+                    mesh.position.set(0, bottom, posCoord - (normalSign > 0 ? wall : 0));
+                } else {
+                    // Левая или правая стенка (вдоль Z)
+                    mesh.rotation.y = Math.PI / 2;
+                    mesh.position.set(posCoord - (normalSign > 0 ? wall : 0), bottom, 0);
+                }
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                grp.add(mesh);
+            }
+
+            const straightX = Math.max(2, outW - 2 * r);
+            const straightZ = Math.max(2, outD - 2 * r);
+
+            // 4 прямые стенки
+            addWallPanel('front', straightX, 'Z', outD / 2, 1);
+            addWallPanel('back', straightX, 'Z', -outD / 2, -1);
+            addWallPanel('right', straightZ, 'X', outW / 2, 1);
+            addWallPanel('left', straightZ, 'X', -outW / 2, -1);
+
+            // 4 угловые стойки (скруглённые или прямые)
+            if (r >= 0.2) {
+                const corners = [
+                    { cx: outW / 2 - r, cz: outD / 2 - r, a0: 0, a1: Math.PI / 2 },
+                    { cx: -outW / 2 + r, cz: outD / 2 - r, a0: Math.PI / 2, a1: Math.PI },
+                    { cx: -outW / 2 + r, cz: -outD / 2 + r, a0: Math.PI, a1: Math.PI * 1.5 },
+                    { cx: outW / 2 - r, cz: -outD / 2 + r, a0: Math.PI * 1.5, a1: Math.PI * 2 }
+                ];
+                corners.forEach(cn => {
+                    const sh = new THREE.Shape();
+                    const x0 = Math.cos(cn.a0) * r, y0 = Math.sin(cn.a0) * r;
+                    sh.moveTo(x0, y0);
+                    sh.absarc(0, 0, r, cn.a0, cn.a1, false);
+                    if (inR > 0.1) {
+                        sh.absarc(0, 0, inR, cn.a1, cn.a0, true);
+                    } else {
+                        sh.lineTo(0, 0);
+                    }
+                    sh.closePath();
+                    const m = extrudeUp(sh, H, bottom, material);
+                    // extrudeUp переводит 2D (x, y) -> 3D (x, 0, -y), поэтому z = -cz
+                    m.position.set(cn.cx, bottom, -cn.cz);
+                    grp.add(m);
+                });
+            } else {
+                // Острые углы (квадратные столбики wall × wall)
+                const cx = outW / 2 - wall / 2;
+                const cz = outD / 2 - wall / 2;
+                [[-cx, -cz], [cx, -cz], [cx, cz], [-cx, cz]].forEach(([px, pz]) => {
+                    grp.add(createBoxMesh(wall, H, wall, px, bottom, pz, material));
+                });
+            }
+
+            return grp;
+        }
+
+        /**
+         * Создаёт рельефную 3D-надпись на верхней стороне крышки
+         */
+        function createEmbossedTextGroup(text, maxWidth, yTop, material) {
+            const clean = text.trim().toUpperCase();
+            if (!clean) return null;
+
+            const grp = new THREE.Group();
+            const chars = Array.from(clean);
+            const charW = 4.0;
+            const charH = 6.0;
+            const gap = 1.6;
+            const totalUnits = chars.length * charW + Math.max(0, chars.length - 1) * gap;
+
+            // Масштаб под ширину крышки
+            const maxAllowedW = Math.max(20, maxWidth * 0.72);
+            const scale = Math.min(3.2, maxAllowedW / Math.max(1, totalUnits));
+            const strokeW = Math.max(0.85, 0.78 * scale);
+            const embossH = 1.0;
+
+            const totalWorldW = totalUnits * scale;
+            const startX = -totalWorldW / 2;
+            const startZ = (charH * scale) / 2; // +Z вниз по тексту
+
+            chars.forEach((ch, idx) => {
+                const strokes = GLYPHS[ch];
+                if (!strokes) return;
+                const ox = startX + idx * (charW + gap) * scale;
+
+                strokes.forEach(poly => {
+                    for (let i = 0; i < poly.length - 1; i++) {
+                        const x1 = ox + poly[i][0] * scale;
+                        const z1 = startZ - poly[i][1] * scale;
+                        const x2 = ox + poly[i + 1][0] * scale;
+                        const z2 = startZ - poly[i + 1][1] * scale;
+
+                        const dx = x2 - x1;
+                        const dz = z2 - z1;
+                        const len = Math.hypot(dx, dz);
+
+                        if (len < 0.05) {
+                            const dotGeo = new THREE.CylinderGeometry(strokeW / 2, strokeW / 2, embossH, 10);
+                            const dot = new THREE.Mesh(dotGeo, material);
+                            dot.position.set(x1, yTop + embossH / 2, z1);
+                            grp.add(dot);
+                        } else {
+                            const barGeo = new THREE.BoxGeometry(len + strokeW * 0.85, embossH, strokeW);
+                            const bar = new THREE.Mesh(barGeo, material);
+                            bar.position.set((x1 + x2) / 2, yTop + embossH / 2, (z1 + z2) / 2);
+                            bar.rotation.y = -Math.atan2(dz, dx);
+                            bar.castShadow = true;
+                            bar.receiveShadow = true;
+                            grp.add(bar);
+                        }
+                    }
+                });
+            });
+
+            return grp;
+        }
+
+        // =========================================================================
+        // 5. ПОСТРОЕНИЕ 3D-МОДЕЛИ КОРОБКИ И КРЫШКИ
+        // =========================================================================
+
+        function disposeGroup(group) {
+            while (group.children.length > 0) {
+                const child = group.children[0];
+                group.remove(child);
+                child.traverse(obj => {
+                    if (obj.geometry) obj.geometry.dispose();
+                });
+            }
+        }
+
+        function getEffectiveDims() {
+            const W = state.width;
+            const D = state.shape === 'circle' ? Math.min(state.width, state.depth) : state.depth;
+            const effW = state.shape === 'circle' ? D : W;
+            const H = state.height;
+            const wall = state.wall;
+            const bottom = state.bottom;
+            const outW = effW + 2 * wall;
+            const outD = D + 2 * wall;
+            const outH = H + bottom;
+            return { inW: effW, inD: D, H, wall, bottom, outW, outD, outH };
+        }
+
+        function rebuildScene() {
+            disposeGroup(boxGroup);
+            disposeGroup(lidGroup);
+
+            const { inW, inD, H, wall, bottom, outW, outD, outH } = getEffectiveDims();
+            const shape = state.shape;
+            const inR = state.cornerRadius;
+            const outR = inR + wall;
+            const lidType = state.isTray ? 'none' : state.lidType;
+            const lidDepth = Math.min(state.lidDepth, H);
+            const cl = state.clearance;
+
+            // ----------------- КОРОБКА -----------------
+            // 1. Дно коробки
+            const bottomShape = createProfile(outW, outD, shape, outR, false);
+            boxGroup.add(extrudeUp(bottomShape, bottom, 0, boxMaterial));
+
+            // 2. Стенки коробки
+            const isSliding = (lidType === 'sliding' && shape === 'rect');
+            const wallH = H;
+
+            if (shape === 'rect' && state.cutouts.length > 0 && !isSliding) {
+                boxGroup.add(buildRectWallsWithCutouts(outW, outD, inW, inD, wall, wallH, bottom, outR, state.cutouts, boxMaterial));
+            } else if (isSliding) {
+                // Для сдвижной крышки: задняя, левая и правая стенки на полную высоту + паз, передняя ниже
+                const grooveH = bottom + cl;
+                const lowerH = Math.max(4, wallH - grooveH);
+                // Нижняя цельная часть стенок
+                boxGroup.add(createHollowRing(outW, outD, inW, inD, shape, outR, inR, lowerH, bottom, boxMaterial));
+                // Верхние направляющие (П-образная рамка: слева, справа, сзади)
+                const railThick = wall;
+                const lipOver = Math.min(3.5, wall * 1.1);
+                // Боковые и задняя стенки доверху
+                boxGroup.add(createBoxMesh(railThick, grooveH, outD, -outW / 2 + railThick / 2, bottom + lowerH, 0, boxMaterial));
+                boxGroup.add(createBoxMesh(railThick, grooveH, outD, outW / 2 - railThick / 2, bottom + lowerH, 0, boxMaterial));
+                boxGroup.add(createBoxMesh(outW, grooveH, railThick, 0, bottom + lowerH, -outD / 2 + railThick / 2, boxMaterial));
+                // Верхний бортик паза (удерживает сдвижную крышку сверху)
+                const capH = 1.8;
+                boxGroup.add(createBoxMesh(railThick + lipOver, capH, outD, -outW / 2 + (railThick + lipOver) / 2, bottom + wallH, 0, boxMaterial));
+                boxGroup.add(createBoxMesh(railThick + lipOver, capH, outD, outW / 2 - (railThick + lipOver) / 2, bottom + wallH, 0, boxMaterial));
+                boxGroup.add(createBoxMesh(outW, capH, railThick + lipOver, 0, bottom + wallH, -outD / 2 + (railThick + lipOver) / 2, boxMaterial));
+            } else {
+                // Обычная цельная стенка (для лотка добавляем плавную фаску сверху)
+                if (state.isTray) {
+                    const bevelH = Math.min(1.4, wall * 0.45);
+                    boxGroup.add(createHollowRing(outW, outD, inW, inD, shape, outR, inR, Math.max(1, wallH - bevelH), bottom, boxMaterial));
+                    boxGroup.add(createHollowRing(outW - bevelH * 0.5, outD - bevelH * 0.5, inW + bevelH * 0.3, inD + bevelH * 0.3, shape, Math.max(0, outR - bevelH * 0.25), inR, bevelH, bottom + wallH - bevelH, boxMaterial, { thickness: 0.45, size: 0.35, segments: 2 }));
+                } else {
+                    boxGroup.add(createHollowRing(outW, outD, inW, inD, shape, outR, inR, wallH, bottom, boxMaterial));
+                }
+
+                // Визуализация вырезов на непрямоугольных формах (в виде контрастных меток-проёмов)
+                if (state.cutouts.length > 0 && shape !== 'rect') {
+                    const cutMat = new THREE.MeshStandardMaterial({ color: 0x0b1f3d, roughness: 0.9 });
+                    state.cutouts.forEach(c => {
+                        const isFB = (c.wall === 'front' || c.wall === 'back');
+                        const sign = (c.wall === 'front' || c.wall === 'right') ? 1 : -1;
+                        const cy = bottom + Math.max(2, Math.min(H - 2, c.offsetY));
+                        let geo;
+                        if (c.shape === 'circle') {
+                            geo = new THREE.CylinderGeometry(c.w / 2, c.w / 2, wall + 1.2, 24);
+                            if (isFB) geo.rotateX(Math.PI / 2);
+                            else geo.rotateZ(Math.PI / 2);
+                        } else {
+                            geo = isFB
+                                ? new THREE.BoxGeometry(c.w, c.h, wall + 1.2)
+                                : new THREE.BoxGeometry(wall + 1.2, c.h, c.w);
+                        }
+                        const m = new THREE.Mesh(geo, cutMat);
+                        if (isFB) m.position.set(c.offsetX, cy, sign * (outD / 2 - wall / 2));
+                        else m.position.set(sign * (outW / 2 - wall / 2), cy, c.offsetX);
+                        boxGroup.add(m);
+                    });
+                }
+            }
+
+            // 3. Внутренние перегородки (ячейки)
+            const divH = Math.min(state.dividerHeight, isSliding ? Math.max(4, H - bottom - cl - 0.5) : H);
+            const divW = state.dividerWall;
+            const divFitFactor = (shape === 'circle' || shape === 'oval') ? 0.94 : (shape === 'hex' ? 0.86 : 1.0);
+
+            if (state.cellsX > 1) {
+                for (let i = 1; i < state.cellsX; i++) {
+                    const xPos = -inW / 2 + (inW / state.cellsX) * i;
+                    let spanZ = inD;
+                    if (shape === 'circle' || shape === 'oval') {
+                        const ratio = xPos / (inW / 2);
+                        spanZ = inD * Math.sqrt(Math.max(0.05, 1 - ratio * ratio)) * divFitFactor;
+                    } else if (shape === 'hex') {
+                        spanZ = inD * divFitFactor;
+                    }
+                    boxGroup.add(createBoxMesh(divW, divH, spanZ, xPos, bottom, 0, boxMaterial));
+                }
+            }
+            if (state.cellsY > 1) {
+                for (let j = 1; j < state.cellsY; j++) {
+                    const zPos = -inD / 2 + (inD / state.cellsY) * j;
+                    let spanX = inW;
+                    if (shape === 'circle' || shape === 'oval') {
+                        const ratio = zPos / (inD / 2);
+                        spanX = inW * Math.sqrt(Math.max(0.05, 1 - ratio * ratio)) * divFitFactor;
+                    } else if (shape === 'hex') {
+                        spanX = inW * divFitFactor;
+                    }
+                    boxGroup.add(createBoxMesh(spanX, divH, divW, 0, bottom, zPos, boxMaterial));
+                }
+            }
+
+            // 4. Элементы крепления на коробке в зависимости от типа крышки
+            const bossPositions = getCornerBossPositions(inW, inD, outW, outD, shape, wall);
+
+            if (lidType === 'screws') {
+                bossPositions.forEach(([bx, bz]) => {
+                    const pillar = createBossWithHole(4.2, 1.6, Math.min(14, H), bottom + H - Math.min(14, H), bx, bz, boxMaterial);
+                    boxGroup.add(pillar);
+                });
+            } else if (lidType === 'magnets') {
+                bossPositions.forEach(([bx, bz]) => {
+                    const magH = Math.min(8, H);
+                    const pillar = createBossWithHole(4.5, 3.1, magH, bottom + H - magH, bx, bz, boxMaterial);
+                    boxGroup.add(pillar);
+                });
+            } else if (lidType === 'snap') {
+                // Выступы-зацепы на левой и правой стенках коробки
+                const tabLen = Math.min(24, outD * 0.35);
+                const latchY = bottom + H - Math.min(lidDepth * 0.65, H - 3);
+                [-1, 1].forEach(side => {
+                    const lx = side * (outW / 2 + 0.6);
+                    boxGroup.add(createBoxMesh(1.4, 2.2, tabLen, lx, latchY, 0, accentMaterial));
+                });
+            } else if (lidType === 'hinge') {
+                // Задняя петля на коробке (2 крайние петли)
+                const hingeZ = -outD / 2 - 3.2;
+                const hingeY = bottom + H;
+                const segLen = Math.min(22, outW * 0.22);
+                const offsetX = Math.min(outW * 0.28, outW / 2 - segLen / 2 - 4);
+                [-offsetX, offsetX].forEach(hx => {
+                    const barrel = createHingeKnuckle(segLen, 3.4, 1.4, hx, hingeY, hingeZ, boxMaterial);
+                    boxGroup.add(barrel);
+                    // Перемычка к стенке коробки
+                    boxGroup.add(createBoxMesh(segLen, 3.8, 3.5, hx, hingeY - 3.8, hingeZ + 2.0, boxMaterial));
+                });
+            }
+
+            // ----------------- КРЫШКА -----------------
+            let lidTotalHeight = 0;
+            let lidOuterW = outW;
+            let lidOuterD = outD;
+
+            if (lidType !== 'none') {
+                if (lidType === 'overlap') {
+                    // Крышка внахлёст: надевается снаружи коробки с зазором cl
+                    const lidInW = outW + 2 * cl;
+                    const lidInD = outD + 2 * cl;
+                    lidOuterW = lidInW + 2 * wall;
+                    lidOuterD = lidInD + 2 * wall;
+                    const lidInR = outR + cl;
+                    const lidOutR = lidInR + wall;
+                    lidTotalHeight = bottom + lidDepth;
+
+                    // Верх крышки
+                    const topSh = createProfile(lidOuterW, lidOuterD, shape, lidOutR, false);
+                    lidGroup.add(extrudeUp(topSh, bottom, lidDepth, lidMaterial));
+                    // Юбка крышки (вниз от верха)
+                    lidGroup.add(createHollowRing(lidOuterW, lidOuterD, lidInW, lidInD, shape, lidOutR, lidInR, lidDepth, 0, lidMaterial));
+
+                } else if (lidType === 'flush') {
+                    // Крышка вровень: верх по внешнему контуру коробки, вставка заходит внутрь с зазором cl
+                    const plugOutW = Math.max(4, inW - 2 * cl);
+                    const plugOutD = Math.max(4, inD - 2 * cl);
+                    const plugInW = Math.max(2, plugOutW - 2 * wall);
+                    const plugInD = Math.max(2, plugOutD - 2 * wall);
+                    const plugH = Math.min(lidDepth, Math.max(3, H - 2));
+                    const plugOutR = Math.max(0, inR - cl);
+                    const plugInR = Math.max(0, plugOutR - wall);
+                    lidTotalHeight = bottom + plugH;
+
+                    const topSh = createProfile(outW, outD, shape, outR, false);
+                    lidGroup.add(extrudeUp(topSh, bottom, plugH, lidMaterial));
+                    lidGroup.add(createHollowRing(plugOutW, plugOutD, plugInW, plugInD, shape, plugOutR, plugInR, plugH, 0, lidMaterial));
+
+                } else if (lidType === 'screws') {
+                    // Крышка на винтах: верх вровень с отверстиями по углам + небольшой внутренний центрирующий буртик
+                    const rimH = Math.min(4, lidDepth * 0.4);
+                    lidTotalHeight = bottom + rimH;
+                    const topSh = createProfile(outW, outD, shape, outR, false);
+                    // Отверстия под винты в крышке
+                    bossPositions.forEach(([bx, bz]) => {
+                        const hole = new THREE.Path();
+                        hole.absarc(bx, -bz, 1.8, 0, Math.PI * 2, true);
+                        topSh.holes.push(hole);
+                    });
+                    lidGroup.add(extrudeUp(topSh, bottom, rimH, lidMaterial));
+                    // Центрирующая юбка
+                    const plugOutW = Math.max(4, inW - 2 * cl);
+                    const plugOutD = Math.max(4, inD - 2 * cl);
+                    const plugInW = Math.max(2, plugOutW - 2 * Math.min(wall, 1.8));
+                    const plugInD = Math.max(2, plugOutD - 2 * Math.min(wall, 1.8));
+                    lidGroup.add(createHollowRing(plugOutW, plugOutD, plugInW, plugInD, shape, Math.max(0, inR - cl), Math.max(0, inR - cl - 1.8), rimH, 0, lidMaterial));
+
+                } else if (lidType === 'magnets') {
+                    // Крышка на магнитах: верх вровень + ответные бобышки с карманами под магниты
+                    const magH = Math.min(5, lidDepth * 0.5);
+                    lidTotalHeight = bottom + magH;
+                    const topSh = createProfile(outW, outD, shape, outR, false);
+                    lidGroup.add(extrudeUp(topSh, bottom, magH, lidMaterial));
+                    bossPositions.forEach(([bx, bz]) => {
+                        const pillar = createBossWithHole(4.5, 3.1, magH, 0, bx, bz, lidMaterial);
+                        lidGroup.add(pillar);
+                    });
+
+                } else if (lidType === 'snap') {
+                    // Крышка на защёлках: верх вровень + гибкие боковые лапки с зацепами
+                    const snapH = Math.min(lidDepth, H - 2);
+                    lidTotalHeight = bottom + snapH;
+                    const topSh = createProfile(outW, outD, shape, outR, false);
+                    lidGroup.add(extrudeUp(topSh, bottom, snapH, lidMaterial));
+                    const tabLen = Math.min(26, outD * 0.36);
+                    [-1, 1].forEach(side => {
+                        const tx = side * (outW / 2 + cl + wall * 0.45);
+                        lidGroup.add(createBoxMesh(wall * 0.9, snapH + bottom, tabLen, tx, 0, 0, lidMaterial));
+                        // Ответный зубчик внутрь
+                        lidGroup.add(createBoxMesh(1.4, 2.0, tabLen, side * (outW / 2 + cl - 0.1), 1.5, 0, lidMaterial));
+                    });
+
+                } else if (lidType === 'hinge') {
+                    // Крышка на петле: верх вровень + центральная петля сзади
+                    const rimH = Math.min(4, lidDepth * 0.35);
+                    lidTotalHeight = bottom + rimH;
+                    const topSh = createProfile(outW, outD, shape, outR, false);
+                    lidGroup.add(extrudeUp(topSh, bottom, rimH, lidMaterial));
+                    const hingeZ = -outD / 2 - 3.2;
+                    const segLen = Math.min(26, outW * 0.28);
+                    const barrel = createHingeKnuckle(segLen, 3.4, 1.4, 0, rimH, hingeZ, lidMaterial);
+                    lidGroup.add(barrel);
+                    lidGroup.add(createBoxMesh(segLen, bottom, 3.5, 0, rimH, hingeZ + 2.0, lidMaterial));
+
+                } else if (lidType === 'sliding') {
+                    // Сдвижная крышка: плоская панель, входящая в пазы, с выемкой под палец
+                    const slideW = Math.max(10, inW + wall * 0.6 - 2 * cl);
+                    const slideD = Math.max(10, inD + wall * 0.4 - cl);
+                    lidOuterW = slideW;
+                    lidOuterD = slideD;
+                    lidTotalHeight = bottom;
+                    const topSh = createProfile(slideW, slideD, shape === 'rect' ? 'rect' : shape, Math.min(inR, 2), false);
+                    lidGroup.add(extrudeUp(topSh, bottom, 0, lidMaterial));
+                    // Упор-ручка спереди для вытягивания
+                    lidGroup.add(createBoxMesh(Math.min(36, slideW * 0.35), 2.2, 4.5, 0, bottom, slideD / 2 - 5, lidMaterial));
+                }
+
+                // Рельефная надпись на верхней плоскости крышки
+                if (state.lidText.trim().length > 0) {
+                    const textGrp = createEmbossedTextGroup(state.lidText, lidOuterW, lidTotalHeight, lidMaterial);
+                    if (textGrp) lidGroup.add(textGrp);
+                }
+            }
+
+            // ----------------- ПОЗИЦИОНИРОВАНИЕ ПО РЕЖИМУ ПРОСМОТРА -----------------
+            const isSection = (state.viewMode === 'section');
+            const clipPlanes = isSection ? [clippingPlane] : [];
+            boxMaterial.clippingPlanes = clipPlanes;
+            lidMaterial.clippingPlanes = clipPlanes;
+            accentMaterial.clippingPlanes = clipPlanes;
+
+            // Обновляем диапазон ползунка разреза
+            const maxSec = Math.ceil(Math.max(outD, lidOuterD) / 2) + 10;
+            const rngSec = document.getElementById('rng-sectionOffset');
+            rngSec.min = -maxSec;
+            rngSec.max = maxSec;
+            if (state.sectionOffset < -maxSec || state.sectionOffset > maxSec) {
+                state.sectionOffset = 0;
+                rngSec.value = 0;
+            }
+            clippingPlane.constant = state.sectionOffset;
+
+            if (lidType === 'none') {
+                boxGroup.position.set(0, 0, 0);
+                lidGroup.visible = false;
+            } else {
+                lidGroup.visible = true;
+                if (state.viewMode === 'side') {
+                    // Рядом: коробка слева, крышка справа (перевёрнута верхом вниз — как на столе печати)
+                    const gap = 28;
+                    const totalSpan = outW + lidOuterW + gap;
+                    boxGroup.position.set(-totalSpan / 2 + outW / 2, 0, 0);
+                    lidGroup.rotation.set(Math.PI, 0, 0);
+                    lidGroup.position.set(totalSpan / 2 - lidOuterW / 2, lidTotalHeight, 0);
+                } else {
+                    // Закрыта или Разрез: крышка надета на коробку
+                    boxGroup.position.set(0, 0, 0);
+                    lidGroup.rotation.set(0, 0, 0);
+                    let lidClosedY = outH;
+                    if (lidType === 'overlap') lidClosedY = outH - lidDepth;
+                    else if (lidType === 'flush') lidClosedY = outH - Math.min(lidDepth, Math.max(3, H - 2));
+                    else if (lidType === 'screws') lidClosedY = outH - Math.min(4, lidDepth * 0.4);
+                    else if (lidType === 'magnets') lidClosedY = outH - Math.min(5, lidDepth * 0.5);
+                    else if (lidType === 'snap') lidClosedY = outH - Math.min(lidDepth, H - 2);
+                    else if (lidType === 'hinge') lidClosedY = outH - Math.min(4, lidDepth * 0.35);
+                    else if (lidType === 'sliding') lidClosedY = outH - bottom - cl;
+                    lidGroup.position.set(0, lidClosedY, 0);
+                }
+            }
+
+            // Сохраняем метаданные для инфо-строки и экспорта
+            state._meta = {
+                outW: lidType === 'overlap' && state.viewMode !== 'side' ? lidOuterW : outW,
+                outD: lidType === 'overlap' && state.viewMode !== 'side' ? lidOuterD : outD,
+                boxOutW: outW,
+                boxOutD: outD,
+                boxOutH: outH,
+                lidOuterW,
+                lidOuterD,
+                lidTotalHeight,
+                totalClosedH: lidType === 'none' ? outH : (lidType === 'sliding' ? outH + 1.8 : outH + bottom),
+                inW,
+                inD
+            };
+
+            updateInfoBarAndWarnings();
+        }
+
+        function getCornerBossPositions(inW, inD, outW, outD, shape, wall) {
+            if (shape === 'circle' || shape === 'oval') {
+                const rx = inW / 2 - 4.5;
+                const rz = inD / 2 - 4.5;
+                const a = Math.PI / 4;
+                return [
+                    [Math.cos(a) * rx, Math.sin(a) * rz],
+                    [-Math.cos(a) * rx, Math.sin(a) * rz],
+                    [-Math.cos(a) * rx, -Math.sin(a) * rz],
+                    [Math.cos(a) * rx, -Math.sin(a) * rz]
+                ];
+            }
+            const ox = Math.max(4, inW / 2 - 4.5);
+            const oz = Math.max(4, inD / 2 - 4.5);
+            return [[-ox, -oz], [ox, -oz], [ox, oz], [-ox, oz]];
+        }
+
+        function createBossWithHole(outerR, holeR, height, yStart, x, z, material) {
+            const sh = new THREE.Shape();
+            sh.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+            const hole = new THREE.Path();
+            hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
+            sh.holes.push(hole);
+            const m = extrudeUp(sh, height, yStart, material);
+            m.position.set(x, yStart, z);
+            return m;
+        }
+
+        function createHingeKnuckle(length, outerR, holeR, x, y, z, material) {
+            const sh = new THREE.Shape();
+            sh.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+            const hole = new THREE.Path();
+            hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
+            sh.holes.push(hole);
+            const geo = new THREE.ExtrudeGeometry(sh, { depth: length, bevelEnabled: false, curveSegments: 20 });
+            geo.rotateY(Math.PI / 2);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(x - length / 2, y, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        // =========================================================================
+        // 6. РАСЧЁТ ВЕСА (PLA 1.24 г/см³), ИНФО-СТРОКА И ПРЕДУПРЕЖДЕНИЕ > 220 мм
+        // =========================================================================
+
+        function calcProfileArea(w, d, shape, r) {
+            if (shape === 'circle') {
+                const rad = Math.min(w, d) / 2;
+                return Math.PI * rad * rad;
+            }
+            if (shape === 'oval') {
+                return Math.PI * (w / 2) * (d / 2);
+            }
+            if (shape === 'hex') {
+                return (3 * Math.sqrt(3) / 2) * (w / 2) * (d / 2);
+            }
+            const rr = Math.max(0, Math.min(r, w / 2, d / 2));
+            return w * d - (4 - Math.PI) * rr * rr;
+        }
+
+        function estimateWeightGrams() {
+            const { inW, inD, H, wall, bottom, outW, outD } = getEffectiveDims();
+            const shape = state.shape;
+            const inR = state.cornerRadius;
+            const outR = inR + wall;
+            const lidType = state.isTray ? 'none' : state.lidType;
+            const cl = state.clearance;
+            const lidDepth = Math.min(state.lidDepth, H);
+
+            // Объём дна + стенок коробки (мм³)
+            const outerArea = calcProfileArea(outW, outD, shape, outR);
+            const innerArea = calcProfileArea(inW, inD, shape, inR);
+            let volMm3 = outerArea * bottom + (outerArea - innerArea) * H;
+
+            // Перегородки
+            const divH = Math.min(state.dividerHeight, H);
+            if (state.cellsX > 1) volMm3 += (state.cellsX - 1) * inD * state.dividerWall * divH;
+            if (state.cellsY > 1) volMm3 += (state.cellsY - 1) * inW * state.dividerWall * divH;
+
+            // Вычитаем объём вырезов
+            state.cutouts.forEach(c => {
+                const area = c.shape === 'circle' ? Math.PI * (c.w / 2) * (c.w / 2) : (c.w * c.h);
+                volMm3 -= area * wall;
+            });
+
+            // Объём крышки
+            if (lidType !== 'none') {
+                if (lidType === 'overlap') {
+                    const lInW = outW + 2 * cl;
+                    const lInD = outD + 2 * cl;
+                    const lOutW = lInW + 2 * wall;
+                    const lOutD = lInD + 2 * wall;
+                    const lOutArea = calcProfileArea(lOutW, lOutD, shape, outR + cl + wall);
+                    const lInArea = calcProfileArea(lInW, lInD, shape, outR + cl);
+                    volMm3 += lOutArea * bottom + (lOutArea - lInArea) * lidDepth;
+                } else if (lidType === 'sliding') {
+                    volMm3 += calcProfileArea(inW, inD, shape, inR) * bottom;
+                } else {
+                    // Вровень / винты / магниты / защёлки / петля
+                    volMm3 += outerArea * bottom;
+                    if (lidType === 'flush') {
+                        const pOutA = calcProfileArea(inW - 2 * cl, inD - 2 * cl, shape, Math.max(0, inR - cl));
+                        const pInA = calcProfileArea(Math.max(2, inW - 2 * cl - 2 * wall), Math.max(2, inD - 2 * cl - 2 * wall), shape, Math.max(0, inR - cl - wall));
+                        volMm3 += Math.max(0, pOutA - pInA) * Math.min(lidDepth, H);
+                    } else {
+                        volMm3 += 1800; // бобышки/петли/защёлки
+                    }
+                }
+            }
+
+            volMm3 = Math.max(100, volMm3);
+            const volCm3 = volMm3 / 1000;
+            const plaDensity = 1.24; // г/см³
+            return Math.round(volCm3 * plaDensity);
+        }
+
+        function pluralCells(n) {
+            const mod10 = n % 10;
+            const mod100 = n % 100;
+            if (mod10 === 1 && mod100 !== 11) return `${n} ячейка`;
+            if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} ячейки`;
+            return `${n} ячеек`;
+        }
+
+        function fmt(v) {
+            return Number.isInteger(v) ? String(v) : v.toFixed(1).replace(/\.0$/, '');
+        }
+
+        function updateInfoBarAndWarnings() {
+            const m = state._meta;
+            if (!m) return;
+
+            const lidType = state.isTray ? 'none' : state.lidType;
+            const maxW = Math.max(m.boxOutW, lidType !== 'none' ? m.lidOuterW : 0);
+            const maxD = Math.max(m.boxOutD, lidType !== 'none' ? m.lidOuterD : 0);
+            const cells = state.cellsX * state.cellsY;
+            const weight = estimateWeightGrams();
+
+            const lidStr = lidType === 'none' ? 'без крышки' : `крышка ${fmt(state.lidDepth)} мм`;
+            document.getElementById('info-bar').textContent =
+                `Снаружи ${fmt(maxW)} × ${fmt(maxD)} × ${fmt(m.totalClosedH)} мм · внутри ${fmt(m.inW)} × ${fmt(m.inD)} × ${fmt(state.height)} · ${lidStr} · ${pluralCells(cells)} · ≈ ${weight} г PLA`;
+
+            // Предупреждение > 220 мм
+            const warnEl = document.getElementById('size-warning');
+            if (maxW > 220 || maxD > 220) {
+                warnEl.classList.remove('hidden');
+                document.getElementById('warning-dims').textContent = `${fmt(maxW)} × ${fmt(maxD)} мм`;
+            } else {
+                warnEl.classList.add('hidden');
+            }
+
+            // Текст кнопки экспорта
+            document.getElementById('export-btn-text').textContent =
+                lidType === 'none' ? 'Скачать STL — коробка (ZIP)' : 'Скачать STL — коробка и крышка (ZIP)';
+        }
+
+        // =========================================================================
+        // 7. БИНАРНЫЙ ЭКСПОРТ STL (1 мм = 1 единица, Z-вверх) И УПАКОВКА В ZIP
+        // =========================================================================
+
+        /**
+         * Конвертирует THREE.Group в бинарный STL ArrayBuffer
+         * Ось Y (Three.js вверх) переводится в Z (слайсеры вверх), модель ставится ровно на Z = 0
+         */
+        function groupToBinarySTL(sourceGroup, flipUpsideDown) {
+            const clone = sourceGroup.clone(true);
+            clone.position.set(0, 0, 0);
+            clone.rotation.set(0, 0, 0);
+            clone.scale.set(1, 1, 1);
+
+            if (flipUpsideDown) {
+                clone.rotation.x = Math.PI;
+            }
+            clone.updateMatrixWorld(true);
+
+            // Собираем все треугольники с учётом трансформаций + конвертация Y-up -> Z-up (rotateX +90°)
+            const yToZ = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+            const triangles = [];
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity;
+
+            const vA = new THREE.Vector3();
+            const vB = new THREE.Vector3();
+            const vC = new THREE.Vector3();
+
+            clone.traverse(obj => {
+                if (!obj.isMesh || !obj.geometry) return;
+                const geom = obj.geometry;
+                const pos = geom.attributes.position;
+                if (!pos) return;
+
+                const mat = new THREE.Matrix4().multiplyMatrices(yToZ, obj.matrixWorld);
+                const idx = geom.index;
+                const triCount = idx ? idx.count / 3 : pos.count / 3;
+
+                for (let i = 0; i < triCount; i++) {
+                    const i0 = idx ? idx.getX(i * 3) : i * 3;
+                    const i1 = idx ? idx.getX(i * 3 + 1) : i * 3 + 1;
+                    const i2 = idx ? idx.getX(i * 3 + 2) : i * 3 + 2;
+
+                    vA.fromBufferAttribute(pos, i0).applyMatrix4(mat);
+                    vB.fromBufferAttribute(pos, i1).applyMatrix4(mat);
+                    vC.fromBufferAttribute(pos, i2).applyMatrix4(mat);
+
+                    const pts = [vA.clone(), vB.clone(), vC.clone()];
+                    for (let k = 0; k < 3; k++) {
+                        if (pts[k].x < minX) minX = pts[k].x;
+                        if (pts[k].x > maxX) maxX = pts[k].x;
+                        if (pts[k].y < minY) minY = pts[k].y;
+                        if (pts[k].y > maxY) maxY = pts[k].y;
+                        if (pts[k].z < minZ) minZ = pts[k].z;
+                    }
+                    triangles.push(pts);
+                }
+            });
+
+            // Центрируем по X/Y и ставим ровно на Z = 0
+            const cx = isFinite(minX) ? (minX + maxX) / 2 : 0;
+            const cy = isFinite(minY) ? (minY + maxY) / 2 : 0;
+            const cz = isFinite(minZ) ? minZ : 0;
+
+            const bufferLen = 84 + triangles.length * 50;
+            const buffer = new ArrayBuffer(bufferLen);
+            const view = new DataView(buffer);
+
+            // Заголовок 80 байт
+            const headerStr = 'Generated by BoxGenerator 3D (1 unit = 1 mm)';
+            for (let i = 0; i < 80; i++) {
+                view.setUint8(i, i < headerStr.length ? headerStr.charCodeAt(i) : 32);
+            }
+            view.setUint32(80, triangles.length, true);
+
+            const cb = new THREE.Vector3();
+            const ab = new THREE.Vector3();
+            let offset = 84;
+
+            for (let i = 0; i < triangles.length; i++) {
+                const [p0, p1, p2] = triangles[i];
+                p0.set(p0.x - cx, p0.y - cy, p0.z - cz);
+                p1.set(p1.x - cx, p1.y - cy, p1.z - cz);
+                p2.set(p2.x - cx, p2.y - cy, p2.z - cz);
+
+                cb.subVectors(p2, p1);
+                ab.subVectors(p0, p1);
+                cb.cross(ab).normalize();
+
+                // Нормаль
+                view.setFloat32(offset, cb.x, true); offset += 4;
+                view.setFloat32(offset, cb.y, true); offset += 4;
+                view.setFloat32(offset, cb.z, true); offset += 4;
+
+                // Вершины
+                view.setFloat32(offset, p0.x, true); offset += 4;
+                view.setFloat32(offset, p0.y, true); offset += 4;
+                view.setFloat32(offset, p0.z, true); offset += 4;
+
+                view.setFloat32(offset, p1.x, true); offset += 4;
+                view.setFloat32(offset, p1.y, true); offset += 4;
+                view.setFloat32(offset, p1.z, true); offset += 4;
+
+                view.setFloat32(offset, p2.x, true); offset += 4;
+                view.setFloat32(offset, p2.y, true); offset += 4;
+                view.setFloat32(offset, p2.z, true); offset += 4;
+
+                // Атрибуты
+                view.setUint16(offset, 0, true); offset += 2;
+            }
+
+            return buffer;
+        }
+
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+
+        async function exportZip() {
+            const btn = document.getElementById('btn-export-zip');
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+            showToast('Генерация бинарных STL и сборка ZIP...');
+
+            try {
+                const zip = new JSZip();
+                const lidType = state.isTray ? 'none' : state.lidType;
+                const tag = `${Math.round(state.width)}x${Math.round(state.depth)}x${Math.round(state.height)}mm`;
+
+                // Коробка: дном вниз (flip = false)
+                const boxStl = groupToBinarySTL(boxGroup, false);
+                zip.file(`korobka_${tag}.stl`, boxStl);
+
+                // Крышка: перевёрнута верхом вниз для печати без поддержек (flip = true)
+                if (lidType !== 'none' && lidGroup.children.length > 0) {
+                    const lidStl = groupToBinarySTL(lidGroup, true);
+                    zip.file(`kryshka_${tag}.stl`, lidStl);
+                }
+
+                const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `box3d_${tag}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 4000);
+                showToast('ZIP-архив с STL успешно скачан!');
+            } catch (err) {
+                console.error(err);
+                showToast('Ошибка при экспорте STL: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }
+        }
+
+        // =========================================================================
+        // 8. УПРАВЛЕНИЕ ИНТЕРФЕЙСОМ И СОБЫТИЯМИ
+        // =========================================================================
+
+        function syncDividerSliderMax() {
+            const rng = document.getElementById('rng-dividerHeight');
+            rng.max = state.height;
+            if (state.dividerFullHeight || state.dividerHeight > state.height) {
+                state.dividerHeight = state.height;
+                state.dividerFullHeight = true;
+            }
+            rng.value = state.dividerHeight;
+            document.getElementById('val-dividerHeight').textContent =
+                state.dividerHeight >= state.height ? `${fmt(state.dividerHeight)} (до края)` : fmt(state.dividerHeight);
+        }
+
+        function syncUIFromState() {
+            // Лоток
+            document.getElementById('chk-tray').checked = state.isTray;
+
+            // Форма
+            document.querySelectorAll('.shape-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.shape === state.shape);
+            });
+            document.getElementById('corner-radius-block').style.display =
+                (state.shape === 'rect' || state.shape === 'hex') ? 'block' : 'none';
+
+            // Ползунки и числа
+            document.getElementById('rng-cornerRadius').value = state.cornerRadius;
+            document.getElementById('val-cornerRadius').textContent = fmt(state.cornerRadius);
+
+            document.getElementById('num-width').value = state.width;
+            document.getElementById('num-depth').value = state.depth;
+            document.getElementById('num-height').value = state.height;
+
+            document.getElementById('rng-wall').value = state.wall;
+            document.getElementById('val-wall').textContent = fmt(state.wall);
+
+            document.getElementById('rng-bottom').value = state.bottom;
+            document.getElementById('val-bottom').textContent = fmt(state.bottom);
+
+            // Крышка
+            const effLid = state.isTray ? 'none' : state.lidType;
+            document.querySelectorAll('.lid-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.lid === effLid);
+            });
+            document.getElementById('lid-options-container').style.display = effLid === 'none' ? 'none' : 'block';
+
+            document.getElementById('rng-lidDepth').value = state.lidDepth;
+            document.getElementById('val-lidDepth').textContent = fmt(state.lidDepth);
+
+            document.getElementById('num-clearance').value = state.clearance;
+            document.querySelectorAll('.clearance-preset').forEach(b => {
+                b.classList.toggle('active', Math.abs(parseFloat(b.dataset.clearance) - state.clearance) < 0.01);
+            });
+
+            // Ячейки
+            document.getElementById('val-cellsX').textContent = state.cellsX;
+            document.getElementById('val-cellsY').textContent = state.cellsY;
+            document.getElementById('rng-dividerWall').value = state.dividerWall;
+            document.getElementById('val-dividerWall').textContent = fmt(state.dividerWall);
+            syncDividerSliderMax();
+
+            // Режим просмотра
+            document.querySelectorAll('.view-mode-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.view === state.viewMode);
+            });
+            document.getElementById('section-control').classList.toggle('hidden', state.viewMode !== 'section');
+            document.getElementById('val-sectionOffset').textContent = `${state.sectionOffset} мм`;
+        }
+
+        // Аккордеоны
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const card = header.closest('.accordion-card');
+                const body = card.querySelector('.accordion-body');
+                const isOpen = !body.classList.contains('hidden');
+                body.classList.toggle('hidden', isOpen);
+                card.classList.toggle('accordion-open', !isOpen);
+            });
+        });
+
+        // Мобильное меню
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        function toggleSidebar(force) {
+            const open = force !== undefined ? force : sidebar.classList.contains('-translate-x-full');
+            sidebar.classList.toggle('-translate-x-full', !open);
+            backdrop.classList.toggle('hidden', !open);
+        }
+        document.getElementById('btn-toggle-sidebar').addEventListener('click', () => toggleSidebar());
+        backdrop.addEventListener('click', () => toggleSidebar(false));
+
+        // Переключатель режимов просмотра
+        document.querySelectorAll('.view-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.viewMode = btn.dataset.view;
+                syncUIFromState();
+                rebuildScene();
+            });
+        });
+
+        // Ползунок разреза
+        document.getElementById('rng-sectionOffset').addEventListener('input', e => {
+            state.sectionOffset = parseFloat(e.target.value);
+            clippingPlane.constant = state.sectionOffset;
+            document.getElementById('val-sectionOffset').textContent = `${state.sectionOffset} мм`;
+        });
+
+        // Сброс камеры
+        document.getElementById('btn-reset-cam').addEventListener('click', () => {
+            camera.position.set(280, 240, 340);
+            controls.target.set(0, state.height / 2, 0);
+            controls.update();
+        });
+
+        // Лоток
+        document.getElementById('chk-tray').addEventListener('change', e => {
+            state.isTray = e.target.checked;
+            if (state.isTray) {
+                if (state.lidType !== 'none') state.prevLidType = state.lidType;
+                state.lidType = 'none';
+            } else {
+                state.lidType = state.prevLidType || 'overlap';
+            }
+            syncUIFromState();
+            rebuildScene();
+        });
+
+        // Форма
+        document.querySelectorAll('.shape-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.shape = btn.dataset.shape;
+                syncUIFromState();
+                rebuildScene();
+            });
+        });
+
+        // Крышка
+        document.querySelectorAll('.lid-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const chosen = btn.dataset.lid;
+                state.lidType = chosen;
+                if (chosen !== 'none') {
+                    state.isTray = false;
+                    state.prevLidType = chosen;
+                }
+                syncUIFromState();
+                rebuildScene();
+            });
+        });
+
+        // Пресеты зазора
+        document.querySelectorAll('.clearance-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.clearance = parseFloat(btn.dataset.clearance);
+                syncUIFromState();
+                rebuildScene();
+            });
+        });
+
+        // Привязка числовых полей и ползунков
+        const clampMap = {
+            cornerRadius: [0, 40, 1],
+            width: [20, 400, 0],
+            depth: [20, 400, 0],
+            height: [10, 300, 0],
+            wall: [0.8, 6, 1],
+            bottom: [0.8, 6, 1],
+            lidDepth: [4, 50, 0],
+            clearance: [0.1, 3, 1],
+            cellsX: [1, 10, 0],
+            cellsY: [1, 10, 0],
+            dividerWall: [0.8, 4, 1],
+            dividerHeight: [5, 300, 0]
+        };
+
+        function setParam(key, rawVal) {
+            const [min, max, decimals] = clampMap[key];
+            const effMax = key === 'dividerHeight' ? state.height : max;
+            let v = Math.max(min, Math.min(effMax, parseFloat(rawVal)));
+            if (isNaN(v)) return;
+            v = Number(v.toFixed(decimals));
+            state[key] = v;
+            if (key === 'dividerHeight') {
+                state.dividerFullHeight = (v >= state.height);
+            }
+            syncUIFromState();
+            rebuildScene();
+        }
+
+        ['cornerRadius', 'wall', 'bottom', 'lidDepth', 'dividerWall', 'dividerHeight'].forEach(key => {
+            document.getElementById('rng-' + key).addEventListener('input', e => setParam(key, e.target.value));
+        });
+        ['width', 'depth', 'height', 'clearance'].forEach(key => {
+            document.getElementById('num-' + key).addEventListener('input', e => {
+                if (e.target.value !== '') setParam(key, e.target.value);
+            });
+        });
+
+        // Кнопки «−» и «+»
+        document.querySelectorAll('.step-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = btn.dataset.stepTarget;
+                const step = parseFloat(btn.dataset.step);
+                setParam(key, state[key] + step);
+            });
+        });
+
+        // Надпись на крышке
+        document.getElementById('txt-lidText').addEventListener('input', e => {
+            state.lidText = e.target.value;
+            rebuildScene();
+        });
+
+        // ----------------- ВЫРЕЗЫ (UI) -----------------
+        function renderCutoutsUI() {
+            const list = document.getElementById('cutouts-list');
+            const badge = document.getElementById('cutout-count-badge');
+            badge.textContent = state.cutouts.length;
+            badge.classList.toggle('hidden', state.cutouts.length === 0);
+
+            list.innerHTML = '';
+            state.cutouts.forEach((c, idx) => {
+                const card = document.createElement('div');
+                card.className = 'p-2.5 rounded-lg bg-navy-900/90 border border-navy-700 space-y-2 text-xs';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold text-cyan-300">Вырез #${idx + 1}</span>
+                        <button type="button" data-del="${c.id}" class="text-rose-400 hover:text-rose-300 text-xs font-medium px-1.5 py-0.5 rounded hover:bg-rose-500/10">Удалить</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <select data-cid="${c.id}" data-field="wall" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white focus:border-cyan-400 outline-none">
+                            <option value="front" ${c.wall === 'front' ? 'selected' : ''}>Передняя</option>
+                            <option value="back" ${c.wall === 'back' ? 'selected' : ''}>Задняя</option>
+                            <option value="left" ${c.wall === 'left' ? 'selected' : ''}>Левая</option>
+                            <option value="right" ${c.wall === 'right' ? 'selected' : ''}>Правая</option>
+                        </select>
+                        <select data-cid="${c.id}" data-field="shape" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white focus:border-cyan-400 outline-none">
+                            <option value="rect" ${c.shape === 'rect' ? 'selected' : ''}>Прямоуг</option>
+                            <option value="circle" ${c.shape === 'circle' ? 'selected' : ''}>Круг</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <label class="flex flex-col gap-0.5 text-[11px] text-sky-300/80">
+                            <span>${c.shape === 'circle' ? 'Диаметр, мм' : 'Ширина, мм'}</span>
+                            <input type="number" data-cid="${c.id}" data-field="w" min="3" max="150" value="${c.w}" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white text-xs">
+                        </label>
+                        ${c.shape === 'rect' ? `
+                        <label class="flex flex-col gap-0.5 text-[11px] text-sky-300/80">
+                            <span>Высота, мм</span>
+                            <input type="number" data-cid="${c.id}" data-field="h" min="3" max="150" value="${c.h}" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white text-xs">
+                        </label>` : `<div></div>`}
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <label class="flex flex-col gap-0.5 text-[11px] text-sky-300/80">
+                            <span>Сдвиг X, мм</span>
+                            <input type="number" data-cid="${c.id}" data-field="offsetX" min="-150" max="150" value="${c.offsetX}" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white text-xs">
+                        </label>
+                        <label class="flex flex-col gap-0.5 text-[11px] text-sky-300/80">
+                            <span>От дна Y, мм</span>
+                            <input type="number" data-cid="${c.id}" data-field="offsetY" min="2" max="250" value="${c.offsetY}" class="bg-navy-950 border border-navy-600 rounded-md px-2 py-1 text-white text-xs">
+                        </label>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+
+            list.querySelectorAll('[data-del]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = parseInt(btn.dataset.del, 10);
+                    state.cutouts = state.cutouts.filter(x => x.id !== id);
+                    renderCutoutsUI();
+                    rebuildScene();
+                });
+            });
+
+            list.querySelectorAll('[data-cid]').forEach(inp => {
+                const ev = inp.tagName === 'SELECT' ? 'change' : 'input';
+                inp.addEventListener(ev, () => {
+                    const id = parseInt(inp.dataset.cid, 10);
+                    const field = inp.dataset.field;
+                    const item = state.cutouts.find(x => x.id === id);
+                    if (!item) return;
+                    if (field === 'wall' || field === 'shape') {
+                        item[field] = inp.value;
+                        if (field === 'shape') renderCutoutsUI();
+                    } else {
+                        const num = parseFloat(inp.value);
+                        if (!isNaN(num)) item[field] = num;
+                    }
+                    rebuildScene();
+                });
+            });
+        }
+
+        document.getElementById('btn-add-cutout').addEventListener('click', () => {
+            state.cutouts.push({
+                id: cutoutIdCounter++,
+                wall: 'front',
+                shape: 'rect',
+                w: 24,
+                h: 14,
+                offsetX: 0,
+                offsetY: Math.round(state.height / 2)
+            });
+            renderCutoutsUI();
+            rebuildScene();
+        });
+
+        // Кнопка экспорта ZIP
+        document.getElementById('btn-export-zip').addEventListener('click', exportZip);
+
+        // =========================================================================
+        // 9. АДАПТИВНЫЙ RESIZE И ЦИКЛ РЕНДЕРА
+        // =========================================================================
+        function onResize() {
+            const w = canvasContainer.clientWidth;
+            const h = canvasContainer.clientHeight;
+            if (w === 0 || h === 0) return;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+
+        window.addEventListener('resize', onResize);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            onResize();
+            syncUIFromState();
+            rebuildScene();
+            animate();
+        };
+    })();
+    </script>
+</body>
+</html>
